@@ -1,99 +1,163 @@
 # 🛰️ AstraGuard AI
 
-## Spacecraft Telemetry Anomaly Detection & Mission Risk Intelligence
+## Space Mission Risk & Anomaly Intelligence
 
-**IBM AI Builders Challenge — August 2026**
-**Challenge Theme: Advance Space Exploration with AI**
+**AstraGuard AI** is an AI-powered prototype for monitoring simulated spacecraft telemetry, detecting anomalous behavior, assessing mission risk, and generating human-readable mission analysis through an interactive Streamlit dashboard.
 
-> ⚠️ **DISCLAIMER:** AstraGuard AI is an AI prototype built using **simulated spacecraft telemetry**. It is not real NASA, ESA, ISRO, or other space-agency telemetry and must not be used for real mission operations or safety-critical decisions.
+> ⚠️ **Prototype Disclaimer:** All telemetry used by AstraGuard AI is simulated data created for demonstration and educational purposes. This is not an official NASA, ESA, or space-agency system and must not be used for real spacecraft operations or safety-critical decisions.
 
 ---
 
-## 📌 Problem Statement
+## 🎯 Problem Statement
 
-Spacecraft continuously generate telemetry from multiple systems, including temperature, battery voltage, power consumption, radiation, communication signal strength, fuel level, and solar power generation.
+Spacecraft continuously generate large volumes of telemetry from critical systems such as:
 
-Monitoring these channels manually can make it difficult to identify unusual patterns quickly, especially when several telemetry values change simultaneously.
+* Thermal systems
+* Battery and power systems
+* Communications
+* Radiation monitoring
+* Fuel
+* Solar power generation
 
-Traditional threshold-based monitoring can identify individual values outside predefined limits, but it may not effectively identify unusual combinations of multiple telemetry variables.
+Manually monitoring multiple telemetry channels can make it difficult to identify unusual behavior quickly, especially when several subsystem values change simultaneously.
 
-**AstraGuard AI** addresses this challenge by combining machine-learning-based anomaly detection with a prototype Mission Risk Index and AI-assisted explanations.
+AstraGuard AI addresses this challenge by transforming telemetry data into a unified mission-intelligence workflow:
+
+**Telemetry → Anomaly Detection → Risk Assessment → AI Explanation → Investigation Support**
 
 ---
 
 ## 💡 Solution
 
-AstraGuard AI is a spacecraft telemetry intelligence prototype that converts simulated telemetry into interpretable mission insights.
+AstraGuard AI combines machine learning, telemetry analytics, risk scoring, visualization, and AI-assisted explanation into a single mission-control-style dashboard.
 
 The system:
 
 1. Loads simulated spacecraft telemetry.
-2. Processes multiple telemetry channels.
-3. Normalizes machine-learning features.
-4. Uses **IsolationForest** for unsupervised anomaly detection.
-5. Generates anomaly scores and anomaly labels.
-6. Evaluates telemetry conditions using a prototype risk engine.
-7. Calculates a **Mission Risk Index (MRI)**.
-8. Classifies risk into LOW, MEDIUM, HIGH, or CRITICAL.
-9. Identifies contributing telemetry factors.
-10. Generates AI-style mission explanations.
-11. Provides investigation recommendations.
-12. Displays the results through an interactive Streamlit Mission Control dashboard.
-13. Provides an emergency simulation demonstrating a simultaneous multi-fault event.
+2. Prepares telemetry features for machine learning.
+3. Uses an **Isolation Forest** model to identify unusual observations.
+4. Calculates a **Mission Risk Index (MRI)**.
+5. Identifies the telemetry factors contributing to risk.
+6. Generates a human-readable explanation.
+7. Provides recommended investigation steps.
+8. Displays the results through an interactive Streamlit dashboard.
+9. Includes an emergency simulation demonstrating a multi-fault event.
 
 ---
 
 # 🚀 Key Features
 
-## 1. Telemetry Monitoring
+### 🛰️ 1. Mission Overview
 
-AstraGuard AI monitors the following simulated spacecraft telemetry channels:
+The dashboard provides a centralized view of:
 
-* 🌡️ Temperature
-* 🔋 Battery voltage
-* ⚡ Power consumption
-* ☢️ Radiation level
-* 📡 Signal strength
-* ⛽ Fuel level
-* ☀️ Solar output
+* Mission status
+* Spacecraft health
+* Mission Risk Score
+* Risk level
+* Active anomalies
+* Latest telemetry timestamp
+
+### 📊 2. Telemetry Monitoring
+
+Interactive Plotly visualizations monitor important telemetry channels, including:
+
+* Temperature
+* Battery voltage
+* Power consumption
+* Radiation level
+* Signal strength
+* Solar output
+
+Normal operating envelopes are displayed alongside telemetry trends.
+
+### ⚠️ 3. AI Anomaly Detection
+
+A trained **Isolation Forest** model identifies statistically unusual telemetry observations without requiring manually labelled anomaly classes.
+
+The model uses:
+
+* Temperature
+* Battery voltage
+* Power consumption
+* Radiation level
+* Signal strength
+* Fuel level
+* Solar output
+
+### 📈 4. Mission Risk Index
+
+A prototype Mission Risk Index converts telemetry conditions and anomaly information into a risk score from **0–100**.
+
+Risk levels are categorized as:
+
+* **LOW**
+* **MEDIUM**
+* **HIGH**
+* **CRITICAL**
+
+This provides a simpler mission-level interpretation than viewing individual sensor values alone.
+
+### 🤖 5. AI Mission Analysis
+
+AstraGuard AI converts detected events into human-readable explanations containing:
+
+* Detected anomaly
+* Telemetry channel
+* Observed value
+* Severity
+* Risk score
+* Contributing factors
+* Possible interpretation
+* Recommended investigation actions
+
+### 🚨 6. Emergency Simulation
+
+The dashboard includes a simulated multi-fault event involving:
+
+* Thermal spike
+* Battery voltage drop
+* Power surge
+* Radiation increase
+* Communication signal degradation
+* Solar-output reduction
+
+The demonstration follows:
+
+```text
+NORMAL
+   ↓
+ANOMALY
+   ↓
+HIGH / CRITICAL RISK
+   ↓
+AI ANALYSIS
+   ↓
+INVESTIGATION SUPPORT
+```
+
+### 💬 7. Ask AstraGuard
+
+The dashboard provides a rule-based mission Q&A interface for questions such as:
+
+* What anomalies were detected?
+* Why is the spacecraft at risk?
+* What should the operator investigate?
+* What is the battery status?
+* What is the radiation level?
+* What is the spacecraft status?
 
 ---
 
-## 2. Machine Learning Anomaly Detection
+# 🧠 AI / Machine Learning Approach
 
-The core anomaly detector uses **IsolationForest** from scikit-learn.
+## Isolation Forest
 
-IsolationForest is an unsupervised anomaly-detection algorithm that identifies observations that can be isolated more easily from the rest of the dataset.
+AstraGuard AI uses the **Isolation Forest** algorithm from `scikit-learn` for unsupervised anomaly detection.
 
-This allows AstraGuard AI to detect unusual telemetry patterns without requiring manually labelled anomaly classes.
+Isolation Forest works by randomly partitioning the feature space. Observations that are easier to isolate from the majority of the data are considered more likely to be anomalous.
 
-### Model Configuration
-
-```text
-Algorithm: IsolationForest
-n_estimators: 200
-contamination: 0.05
-random_state: 42
-n_jobs: -1
-```
-
-The model uses these telemetry features:
-
-```text
-temperature
-battery_voltage
-power_consumption
-radiation_level
-signal_strength
-fuel_level
-solar_output
-```
-
----
-
-## 3. Machine Learning Pipeline
-
-The anomaly-detection pipeline is:
+### Model Pipeline
 
 ```text
 Simulated Telemetry
@@ -102,602 +166,413 @@ Feature Selection
         ↓
 StandardScaler
         ↓
-IsolationForest
+Isolation Forest
         ↓
 Anomaly Score
         ↓
-Anomaly Classification
+Anomaly Flag
+        ↓
+Mission Risk Assessment
+        ↓
+AI Mission Explanation
 ```
 
-The IsolationForest prediction convention is:
-
-```text
-+1 → Normal
--1 → Anomaly
-```
-
-The trained pipeline is saved as:
+The trained model is stored as:
 
 ```text
 models/anomaly_model.pkl
 ```
 
----
-
-# 📊 Mission Risk Intelligence
-
-AstraGuard AI includes a prototype **Mission Risk Index (MRI)** that converts telemetry conditions and anomaly information into a risk score between 0 and 100.
-
-```text
-0 ─────────────────────────────── 100
-LOW                              CRITICAL
-```
-
-The prototype risk levels are:
-
-| Risk Score | Risk Level |
-| ---------: | ---------- |
-|       0–29 | LOW        |
-|      30–60 | MEDIUM     |
-|      61–80 | HIGH       |
-|     81–100 | CRITICAL   |
-
-The MRI is intended as a **demonstration decision-support mechanism**, not as a real spacecraft safety standard.
+The saved model contains the preprocessing and anomaly-detection pipeline used by the dashboard.
 
 ---
 
-# 🤖 AI Mission Analysis
-
-When an anomalous event is identified, AstraGuard AI provides an interpretable analysis.
-
-The explanation layer can identify:
-
-* The detected event
-* Contributing telemetry channels
-* Severity of telemetry deviations
-* Potential reasons for concern
-* Recommended investigation steps
-
-The explanations are intended to help a human operator understand the model output.
-
-> The AI explanation layer is a prototype and does not provide autonomous spacecraft control.
-
----
-
-# ⚡ Emergency Simulation
-
-The dashboard contains an interactive emergency simulation.
-
-When activated, the prototype injects a simulated simultaneous multi-fault event.
-
-Example:
+# 📐 System Architecture
 
 ```text
-Temperature       → 112.4 °C
-Battery Voltage   → 19.8 V
-Power Consumption → 331.0 W
-Radiation Level   → 11.2 mSv/h
-Signal Strength   → -121 dBm
-Solar Output      → 8.7 W
-```
-
-The dashboard demonstrates the complete response pipeline:
-
-```text
-NORMAL
-   ↓
-ANOMALY DETECTION
-   ↓
-HIGH / CRITICAL RISK
-   ↓
-AI MISSION ANALYSIS
-   ↓
-INVESTIGATION RECOMMENDATIONS
-```
-
-This is a **simulated demonstration event**, not a real spacecraft emergency.
-
----
-
-# 💬 Ask AstraGuard
-
-The dashboard includes an interactive Q&A section.
-
-Example questions include:
-
-```text
-What anomalies were detected?
-
-Why is the spacecraft at risk?
-
-What should the operator investigate?
-
-What is the battery status?
-
-What is the radiation level?
-```
-
-The Q&A engine uses the processed telemetry, anomaly results, and risk information to provide contextual responses.
-
----
-
-# 🏗️ System Architecture
-
-```text
-                 ┌─────────────────────────┐
-                 │ Simulated Telemetry CSV │
-                 │     telemetry.csv       │
-                 └────────────┬────────────┘
-                              │
+                  ┌─────────────────────────┐
+                  │   Simulated Telemetry   │
+                  │   data/telemetry.csv    │
+                  └────────────┬────────────┘
+                               │
+                               ▼
+                  ┌─────────────────────────┐
+                  │   Data Processing       │
+                  │   Feature Preparation   │
+                  └────────────┬────────────┘
+                               │
+                               ▼
+                  ┌─────────────────────────┐
+                  │   StandardScaler        │
+                  │   Feature Normalization │
+                  └────────────┬────────────┘
+                               │
+                               ▼
+                  ┌─────────────────────────┐
+                  │   Isolation Forest      │
+                  │   Anomaly Detection     │
+                  └────────────┬────────────┘
+                               │
+                               ▼
+                  ┌─────────────────────────┐
+                  │   Risk Engine            │
+                  │   Mission Risk Index     │
+                  └────────────┬────────────┘
+                               │
+                    ┌──────────┴──────────┐
+                    ▼                     ▼
+          ┌──────────────────┐   ┌──────────────────┐
+          │ Streamlit        │   │ AI Explanation   │
+          │ Dashboard        │   │ Engine            │
+          └────────┬─────────┘   └────────┬─────────┘
+                   │                      │
+                   └──────────┬───────────┘
                               ▼
-                 ┌─────────────────────────┐
-                 │ Telemetry Processing    │
-                 │     Pandas / NumPy      │
-                 └────────────┬────────────┘
-                              │
-                              ▼
-                 ┌─────────────────────────┐
-                 │     StandardScaler      │
-                 │  Feature Normalization  │
-                 └────────────┬────────────┘
-                              │
-                              ▼
-                 ┌─────────────────────────┐
-                 │     IsolationForest     │
-                 │   Anomaly Detection     │
-                 └────────────┬────────────┘
-                              │
-                              ▼
-                 ┌─────────────────────────┐
-                 │      Risk Engine        │
-                 │   Mission Risk Index    │
-                 └────────────┬────────────┘
-                              │
-                              ▼
-                 ┌─────────────────────────┐
-                 │   AI Explanation Layer  │
-                 │ Analysis & Recommendations│
-                 └────────────┬────────────┘
-                              │
-                              ▼
-                 ┌─────────────────────────┐
-                 │ Streamlit Mission Control│
-                 │        Dashboard        │
-                 └─────────────────────────┘
+                  ┌─────────────────────────┐
+                  │ Mission Intelligence    │
+                  │ & Investigation Support │
+                  └─────────────────────────┘
 ```
-
----
-
-# 📁 Repository Structure
-
-```text
-astraguard-ai/
-│
-├── assets/
-│   └── Dashboard screenshots and project visuals
-│
-├── data/
-│   ├── telemetry.csv
-│   ├── anomaly_results.csv
-│   └── risk_results.csv
-│
-├── models/
-│   └── anomaly_model.pkl
-│
-├── notebooks/
-│   └── telemetry_analysis.ipynb
-│
-├── src/
-│   ├── anomaly_detector.py
-│   ├── risk_engine.py
-│   └── ai_explanation.py
-│
-├── app.py
-├── generate_telemetry.py
-├── train_anomaly_model.py
-├── requirements.txt
-└── README.md
-```
-
----
-
-# 📂 File Descriptions
-
-| File / Folder                        | Purpose                                                                             |
-| ------------------------------------ | ----------------------------------------------------------------------------------- |
-| `app.py`                             | Main Streamlit Mission Control dashboard                                            |
-| `generate_telemetry.py`              | Generates simulated spacecraft telemetry                                            |
-| `train_anomaly_model.py`             | Trains and saves the anomaly-detection model                                        |
-| `requirements.txt`                   | Python dependencies                                                                 |
-| `README.md`                          | Project documentation                                                               |
-| `data/telemetry.csv`                 | Simulated spacecraft telemetry dataset                                              |
-| `data/anomaly_results.csv`           | Telemetry data with anomaly-detection results                                       |
-| `data/risk_results.csv`              | Telemetry data with prototype risk results                                          |
-| `models/anomaly_model.pkl`           | Saved trained ML pipeline                                                           |
-| `src/anomaly_detector.py`            | Telemetry loading, preprocessing, anomaly detection, scoring, and model persistence |
-| `src/risk_engine.py`                 | Mission Risk Index and telemetry risk assessment                                    |
-| `src/ai_explanation.py`              | AI-style explanations and investigation recommendations                             |
-| `notebooks/telemetry_analysis.ipynb` | Exploratory telemetry analysis and ML workflow                                      |
-| `assets/`                            | Dashboard screenshots and project visuals                                           |
-
----
-
-# 🔄 Project Workflow
-
-```text
-generate_telemetry.py
-        │
-        ▼
-data/telemetry.csv
-        │
-        ▼
-train_anomaly_model.py
-        │
-        ▼
-models/anomaly_model.pkl
-        │
-        ▼
-app.py
-        │
-        ├── anomaly_detector.py
-        │          ↓
-        │    Anomaly Detection
-        │
-        ├── risk_engine.py
-        │          ↓
-        │    Mission Risk Index
-        │
-        └── ai_explanation.py
-                   ↓
-             AI Mission Analysis
-                   │
-                   ▼
-          Streamlit Dashboard
-```
-
----
-
-# 🧪 Telemetry Analysis Notebook
-
-The project includes:
-
-```text
-notebooks/telemetry_analysis.ipynb
-```
-
-The notebook demonstrates the machine-learning workflow used during development.
-
-### Notebook Steps
-
-1. Import libraries
-2. Load simulated telemetry
-3. Explore the dataset
-4. Check missing values
-5. Generate descriptive statistics
-6. Visualize telemetry trends
-7. Prepare machine-learning features
-8. Train IsolationForest
-9. Identify anomalous observations
-10. Visualize normal versus anomalous telemetry
-11. Calculate anomaly statistics
-12. Interpret the results
-
-The notebook provides a transparent view of the data-analysis and anomaly-detection process.
 
 ---
 
 # 🛠️ Technology Stack
 
-| Technology       | Purpose                                |
-| ---------------- | -------------------------------------- |
-| Python           | Core programming language              |
-| Pandas           | Data processing                        |
-| NumPy            | Numerical computation                  |
-| Scikit-learn     | Machine learning                       |
-| IsolationForest  | Unsupervised anomaly detection         |
-| StandardScaler   | Feature normalization                  |
-| Joblib           | Model persistence                      |
-| Streamlit        | Interactive dashboard                  |
-| Plotly           | Telemetry visualization                |
-| Jupyter Notebook | Data analysis and experimentation      |
-| GitHub           | Version control and project repository |
-| IBM Bob          | AI-assisted development                |
-
----
-
-# 🤖 How IBM Bob Was Used
-
-**IBM Bob was used as the primary AI-assisted development environment for building and refining AstraGuard AI.**
-
-Bob supported the project development process in the following areas:
-
-## 1. Generate Telemetry-Processing Code
-
-IBM Bob helped generate and structure Python code for:
-
-* Loading telemetry CSV files
-* Parsing timestamps
-* Selecting telemetry features
-* Processing Pandas DataFrames
-* Preparing data for machine learning
-
----
-
-## 2. Develop ML Pipeline
-
-Bob assisted in developing the machine-learning pipeline:
-
-```text
-Telemetry
-    ↓
-Feature Selection
-    ↓
-StandardScaler
-    ↓
-IsolationForest
-    ↓
-Anomaly Scores
-    ↓
-Normal / Anomaly Classification
-```
-
-It also helped structure reusable training and inference functions.
-
----
-
-## 3. Implement Anomaly Detection
-
-IBM Bob assisted with implementing the IsolationForest anomaly detector, including:
-
-* Model configuration
-* Model training
-* Anomaly scoring
-* Prediction
-* Result labelling
-* Model persistence using Joblib
-
-The trained model is stored at:
-
-```text
-models/anomaly_model.pkl
-```
-
----
-
-## 4. Debug Python / Streamlit Code
-
-Bob helped identify and resolve development issues involving:
-
-* Python syntax errors
-* Import paths
-* Streamlit execution
-* Model loading
-* Data-processing issues
-* Dashboard runtime issues
-* Project file organization
-
----
-
-## 5. Build Dashboard Components
-
-Bob helped develop the Streamlit Mission Control dashboard components, including:
-
-* Mission Overview
-* Spacecraft Health
-* Mission Risk Score
-* Risk Level
-* Telemetry Monitoring
-* Active Anomalies
-* Mission Risk Gauge
-* AI Mission Analysis
-* Emergency Simulation
-* Ask AstraGuard Q&A
-
----
-
-## 6. Improve UI
-
-IBM Bob assisted with improving the dashboard interface and presentation.
-
-The dashboard uses a dark aerospace-inspired mission-control design with:
-
-* KPI cards
-* Telemetry charts
-* Risk badges
-* Risk gauge
-* Alert panels
-* Anomaly tables
-* Emergency-event visualization
-* Responsive dashboard columns
-
-The objective was to make machine-learning results easier to understand and interpret.
-
----
-
-## 7. Refactor Code
-
-Bob helped organize functionality into reusable modules instead of keeping the entire application in one Python file.
-
-The project separates major responsibilities into:
-
-```text
-src/anomaly_detector.py
-src/risk_engine.py
-src/ai_explanation.py
-app.py
-```
-
-This improves readability, maintainability, and modularity.
-
----
-
-## 8. Test Functionality
-
-IBM Bob assisted with testing the integrated prototype, including:
-
-* Telemetry loading
-* Model loading
-* Anomaly scoring
-* Risk calculation
-* Dashboard rendering
-* Emergency simulation
-* AI explanation generation
-* Q&A functionality
+| Technology       | Purpose                                 |
+| ---------------- | --------------------------------------- |
+| Python           | Application and ML development          |
+| Streamlit        | Interactive mission-control dashboard   |
+| Pandas           | Telemetry data processing               |
+| NumPy            | Numerical computation                   |
+| scikit-learn     | Isolation Forest and preprocessing      |
+| Plotly           | Interactive telemetry visualizations    |
+| Joblib           | Model persistence                       |
+| Jupyter Notebook | Telemetry analysis and ML demonstration |
+| IBM Bob          | AI-assisted development                 |
+| Git              | Version control                         |
+| GitHub           | Source-code hosting                     |
 
 ---
 
 # 📊 Dataset
 
-AstraGuard AI uses **simulated spacecraft telemetry**.
+AstraGuard AI uses a **simulated spacecraft telemetry dataset**.
 
-The dataset contains time-based measurements representing spacecraft-system behavior.
-
-### Main telemetry fields
+The main dataset is located at:
 
 ```text
-timestamp
-temperature
-battery_voltage
-power_consumption
-radiation_level
-signal_strength
-fuel_level
-solar_output
+data/telemetry.csv
 ```
 
-The data is generated specifically for this AI prototype.
+The telemetry contains simulated measurements representing spacecraft subsystem behavior, including:
 
-> **The dataset does not represent real NASA, ESA, ISRO, or other space-agency telemetry.**
+* Temperature
+* Battery voltage
+* Power consumption
+* Radiation level
+* Signal strength
+* Fuel level
+* Solar output
+
+### Generated Results
+
+The project also contains processed outputs:
+
+```text
+data/anomaly_results.csv
+data/risk_results.csv
+```
+
+These files contain the results of anomaly detection and mission-risk processing.
+
+> The dataset is simulated and does not represent official spacecraft telemetry.
+
+---
+
+# 🤖 How IBM Bob Was Used
+
+**IBM Bob was used as the primary AI-assisted development environment during the creation and refinement of AstraGuard AI.**
+
+Bob supported multiple stages of development.
+
+### 1. Generate Telemetry-Processing Code
+
+Bob assisted with developing and refining Python code for:
+
+* Loading telemetry CSV data
+* Processing telemetry records
+* Selecting ML features
+* Preparing data for analysis
+* Generating processed outputs
+
+### 2. Develop the ML Pipeline
+
+Bob assisted in structuring the machine-learning workflow from:
+
+```text
+Telemetry
+    ↓
+Preprocessing
+    ↓
+Feature Preparation
+    ↓
+Model Training
+    ↓
+Anomaly Detection
+```
+
+### 3. Implement Anomaly Detection
+
+Bob helped implement and refine the `IsolationForest` anomaly-detection pipeline using `scikit-learn`.
+
+### 4. Debug Python and Streamlit Code
+
+Bob was used during development to identify and fix issues involving:
+
+* Python syntax
+* Imports
+* File paths
+* Streamlit execution
+* Model loading
+* Data processing
+* Function integration
+* Dashboard errors
+
+### 5. Build Dashboard Components
+
+Bob assisted with the development of dashboard components including:
+
+* Mission Overview
+* Telemetry Monitoring
+* Active Anomalies
+* Mission Risk
+* AI Mission Analysis
+* Emergency Simulation
+* Ask AstraGuard
+
+### 6. Improve User Interface
+
+Bob assisted with improving:
+
+* Dashboard layout
+* Dark aerospace theme
+* Typography
+* Metric cards
+* Risk indicators
+* Telemetry charts
+* Alert components
+* Mission-control presentation
+
+### 7. Refactor Code
+
+Bob assisted in organizing the application into reusable modules:
+
+```text
+src/
+├── anomaly_detector.py
+├── risk_engine.py
+└── ai_explanation.py
+```
+
+This separation improves maintainability and makes the application easier to extend.
+
+### 8. Test Functionality
+
+Bob assisted with testing and debugging the complete workflow:
+
+```text
+Telemetry Loading
+       ↓
+Model Loading
+       ↓
+Anomaly Detection
+       ↓
+Risk Assessment
+       ↓
+AI Explanation
+       ↓
+Streamlit Dashboard
+```
+
+### IBM Bob Development Workflow
+
+```text
+Project Idea
+     ↓
+IBM Bob AI-Assisted Development
+     ↓
+Code Generation
+     ↓
+Implementation
+     ↓
+Debugging
+     ↓
+Refactoring
+     ↓
+Testing
+     ↓
+Streamlit Prototype
+     ↓
+GitHub Repository
+```
 
 ---
 
 # 📈 Results
 
-AstraGuard AI demonstrates an end-to-end telemetry intelligence workflow:
-
-```text
-Telemetry
-    ↓
-Machine Learning
-    ↓
-Anomaly Detection
-    ↓
-Risk Assessment
-    ↓
-AI Explanation
-    ↓
-Mission Control Dashboard
-```
+AstraGuard AI demonstrates an end-to-end simulated spacecraft telemetry intelligence pipeline.
 
 The prototype can:
 
-* Detect statistically unusual telemetry observations.
-* Generate anomaly scores.
-* Classify observations as normal or anomalous.
-* Identify contributing telemetry factors.
-* Calculate a prototype Mission Risk Index.
-* Categorize risk severity.
-* Generate investigation recommendations.
-* Visualize telemetry trends.
-* Display anomaly events.
-* Simulate a multi-fault event.
-* Provide contextual telemetry Q&A.
+* Process telemetry records
+* Detect statistically unusual observations
+* Flag anomalous telemetry
+* Calculate mission risk
+* Identify contributing telemetry factors
+* Generate human-readable explanations
+* Recommend investigation steps
+* Visualize telemetry trends
+* Simulate multi-fault emergency conditions
 
-Because the dataset is simulated, these results demonstrate **prototype functionality and technical feasibility**, not real spacecraft performance.
+### Example Workflow
+
+```text
+Raw Telemetry
+     ↓
+Data Processing
+     ↓
+Isolation Forest
+     ↓
+Anomaly Detected
+     ↓
+Risk Factors Identified
+     ↓
+Mission Risk Score
+     ↓
+AI Mission Analysis
+     ↓
+Investigation Guidance
+```
 
 ---
 
 # 🌍 Real-World Impact
 
-A future system based on this concept could potentially assist mission teams by:
+Although AstraGuard AI currently uses simulated data, the concept demonstrates how AI-assisted telemetry intelligence could potentially support future space and satellite operations.
 
-* Detecting unusual telemetry patterns earlier.
-* Reducing the amount of raw telemetry requiring manual inspection.
-* Highlighting potentially important multi-channel events.
-* Prioritizing events according to estimated risk.
-* Providing interpretable explanations of anomalies.
-* Supporting faster human investigation and decision-making.
+Potential applications include:
 
-The intended concept is **human-centered AI decision support**, where AI assists operators rather than autonomously controlling spacecraft.
+* 🛰️ Spacecraft health monitoring
+* 📡 Satellite telemetry analysis
+* ⚠️ Early anomaly identification
+* 📊 Mission-risk visualization
+* 🤖 Automated technical reporting
+* 🔍 Multi-sensor anomaly correlation
+* 🚨 Alert prioritization
+* 👩‍🚀 Operator decision support
+
+### Vision
+
+> **Transform complex telemetry streams into clear, explainable mission intelligence.**
 
 ---
 
 # 🏆 Challenge Fit
 
-## 🚀 Advance Space Exploration with AI
+## IBM AI Builders Challenge — Advance Space Exploration with AI
 
-AstraGuard AI applies artificial intelligence and machine learning to a space-exploration monitoring scenario.
+AstraGuard AI addresses the space-exploration theme by applying artificial intelligence and machine learning to a spacecraft telemetry monitoring scenario.
 
-The project combines:
+The project demonstrates:
 
-```text
-Artificial Intelligence
-        +
-Machine Learning
-        +
-Space Exploration
-        +
-Telemetry Analysis
-        +
-Anomaly Detection
-        +
-Mission Risk Intelligence
-        +
-Human-Centered Decision Support
-```
+* AI-assisted development using IBM Bob
+* Machine-learning anomaly detection
+* Simulated spacecraft telemetry analysis
+* Mission risk assessment
+* AI-assisted explanations
+* Interactive visualization
+* Emergency-event simulation
+* Investigation support
 
-The prototype demonstrates how AI can transform simulated spacecraft telemetry into interpretable mission insights.
+The goal is to demonstrate how AI can help transform complex telemetry data into understandable mission intelligence.
 
 ---
 
-# 💻 Installation
+# 📁 Project Structure
 
-## 1. Clone the repository
+```text
+astraguard-ai/
+│
+├── app.py
+│   └── Main Streamlit mission-control dashboard
+│
+├── generate_telemetry.py
+│   └── Generates simulated spacecraft telemetry
+│
+├── train_anomaly_model.py
+│   └── Trains and saves the anomaly-detection model
+│
+├── requirements.txt
+│   └── Python dependencies
+│
+├── README.md
+│   └── Project documentation
+│
+├── assets/
+│   └── Dashboard images and project visual assets
+│
+├── data/
+│   ├── telemetry.csv
+│   │   └── Simulated spacecraft telemetry dataset
+│   │
+│   ├── anomaly_results.csv
+│   │   └── Anomaly-detection results
+│   │
+│   └── risk_results.csv
+│       └── Mission-risk results
+│
+├── models/
+│   └── anomaly_model.pkl
+│       └── Trained anomaly-detection pipeline
+│
+├── notebooks/
+│   └── AstraGuard_Telemetry_Analysis.ipynb
+│       └── Telemetry exploration, visualization and ML analysis
+│
+└── src/
+    ├── anomaly_detector.py
+    │   └── Telemetry loading, model training and anomaly scoring
+    │
+    ├── risk_engine.py
+    │   └── Mission Risk Index and risk assessment
+    │
+    └── ai_explanation.py
+        └── Human-readable anomaly explanations
+```
+
+This structure matches the current repository folders and root files.
+
+---
+
+# ⚙️ Installation
+
+## 1. Clone the Repository
 
 ```bash
 git clone https://github.com/soujanya04122007/astraguard-ai.git
-```
-
-Enter the project directory:
-
-```bash
 cd astraguard-ai
 ```
 
----
-
-## 2. Create a virtual environment
-
-On Windows:
+## 2. Install Dependencies
 
 ```bash
-python -m venv .venv
+pip install -r requirements.txt
 ```
 
-Activate it:
+If necessary, install the core packages manually:
 
 ```bash
-.venv\Scripts\activate
-```
-
----
-
-## 3. Install dependencies
-
-```bash
-python -m pip install -r requirements.txt
-```
-
-If Streamlit is not installed:
-
-```bash
-python -m pip install streamlit
-```
-
-Verify the installation:
-
-```bash
-python -m streamlit --version
+pip install streamlit pandas numpy scikit-learn plotly joblib
 ```
 
 ---
@@ -710,83 +585,141 @@ From the project root directory, run:
 python -m streamlit run app.py
 ```
 
-### Important
+The Streamlit dashboard will normally be available at:
 
-Use:
-
-```bash
-python -m streamlit run app.py
+```text
+http://localhost:8501
 ```
 
-Do **not** use:
-
-```bash
-python.exe -m py_compile -m streamlit run app.py
-```
-
-`py_compile` is used for Python syntax checking and is not the command for starting a Streamlit application.
+> **Important:** Use `python -m streamlit run app.py` rather than `python -m py_compile -m streamlit run app.py`. These are different Python commands.
 
 ---
 
-# 🧠 Trained Model
+# 🧪 Running the ML Pipeline
 
-The trained anomaly-detection pipeline is stored at:
+### Generate simulated telemetry
+
+```bash
+python generate_telemetry.py
+```
+
+### Train the anomaly-detection model
+
+```bash
+python train_anomaly_model.py
+```
+
+The trained model is saved to:
 
 ```text
 models/anomaly_model.pkl
 ```
 
-The saved pipeline contains the preprocessing and IsolationForest components required for anomaly scoring.
+### Launch the dashboard
 
-The Streamlit application loads the saved model rather than retraining the model every time the dashboard starts.
+```bash
+python -m streamlit run app.py
+```
 
 ---
 
-# 🔐 Prototype Safety Notice
+# 📓 Telemetry Analysis Notebook
 
-AstraGuard AI is a **demonstration and educational prototype**.
+The project includes a Jupyter Notebook:
 
-All telemetry data used by this project is simulated.
+```text
+notebooks/AstraGuard_Telemetry_Analysis.ipynb
+```
 
-The anomaly detector, Mission Risk Index, emergency simulation, and AI explanations are designed to demonstrate the concept of AI-assisted spacecraft monitoring.
+The notebook demonstrates:
 
-**This project is not an official NASA, ESA, ISRO, or other space-agency system and must not be used for real spacecraft operations or safety-critical decisions.**
+1. Importing libraries
+2. Loading simulated telemetry
+3. Exploring the dataset
+4. Checking missing values
+5. Descriptive statistics
+6. Visualizing telemetry trends
+7. Preparing ML features
+8. Training Isolation Forest
+9. Identifying anomalous observations
+10. Visualizing normal vs anomalous telemetry
+11. Calculating anomaly statistics
+12. Interpreting the results
 
 ---
 
 # 🔮 Future Improvements
 
-Future versions could include:
+Future versions of AstraGuard AI could include:
 
 * Real-time telemetry streaming
-* Online anomaly detection
 * Advanced time-series anomaly detection
-* LSTM or Transformer-based models
-* Multivariate temporal analysis
-* Explainable AI techniques
-* Human-in-the-loop operator feedback
-* Automated alert prioritization
+* LSTM or Transformer-based forecasting
+* Automated anomaly classification
+* Multi-sensor anomaly correlation
+* More advanced explainable AI
 * Historical mission comparison
-* Cloud deployment
-* Secure telemetry ingestion
-* More advanced AI mission-assistant capabilities
+* Real satellite telemetry integration
+* Automated alert notifications
+* Digital-twin simulation
+* Fault-propagation modeling
+* Mission-control role-based interfaces
 
 ---
 
-# 👩‍💻 Project Information
+# 🔐 Safety & Data Disclaimer
 
-**Project:** AstraGuard AI
-**Challenge:** IBM AI Builders Challenge — August 2026
-**Theme:** Advance Space Exploration with AI
+AstraGuard AI is a **research and demonstration prototype**.
 
-### Core Technologies
-
-**Python · Scikit-learn · IsolationForest · Pandas · NumPy · Streamlit · Plotly · Jupyter · IBM Bob**
+* All telemetry is simulated.
+* The system is not an official NASA, ESA, or space-agency system.
+* AI-generated analysis is for demonstration purposes.
+* Mission Risk Index values are prototype outputs.
+* The application must not be used to control spacecraft.
+* The application must not be used for safety-critical decisions.
 
 ---
 
-## 🛰️ AstraGuard AI
+# ⭐ Key Innovation
 
-> **Turning spacecraft telemetry into mission intelligence.**
+AstraGuard AI goes beyond simply displaying telemetry.
 
-**Simulated data. AI-powered prototype. Human-centered decision support.**
+It connects **detection, understanding, risk quantification, explanation, and investigation support** into a single workflow:
+
+```text
+DETECT
+  ↓
+UNDERSTAND
+  ↓
+QUANTIFY RISK
+  ↓
+EXPLAIN
+  ↓
+INVESTIGATE
+```
+
+### 🛰️ AstraGuard AI
+
+**Detect anomalies. Understand risk. Accelerate mission intelligence.**
+
+---
+
+## 📌 Project Information
+
+| Item             | Details                                     |
+| ---------------- | ------------------------------------------- |
+| Project          | AstraGuard AI                               |
+| Domain           | Artificial Intelligence & Space Exploration |
+| Focus            | Spacecraft Telemetry Anomaly Detection      |
+| Machine Learning | Isolation Forest                            |
+| Dashboard        | Streamlit                                   |
+| Development      | IBM Bob + VS Code                           |
+| Repository       | GitHub                                      |
+| Data             | Simulated telemetry                         |
+| Challenge Theme  | Advance Space Exploration with AI           |
+
+---
+
+**IBM AI Builders Challenge — August 2026**
+
+> 🛰️ **All telemetry is simulated. Prototype only.**
