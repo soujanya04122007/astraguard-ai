@@ -1,596 +1,730 @@
 """
-src/ai_explanation.py
-──────────────────────────────────────────────────────────────────────────────
-AstraGuard AI — Mission Analysis & Natural-Language Explanation Engine
-IBM AI Builders Challenge, August 2026: Advance Space Exploration with AI
+AstraGuard AI — Natural-Language Explanation Engine
 
-PROTOTYPE DISCLAIMER
-────────────────────
-All analyses produced by this module are PROTOTYPE decision-support outputs
-generated from SIMULATED spacecraft telemetry. They are NOT certified
-aerospace assessments and must NOT be used for real mission operations or
-safety-critical decisions.
-
-PURPOSE
-───────
-Convert structured anomaly-detection and risk-scoring results into concise,
-operator-readable natural-language mission analyses. The language deliberately
-uses hedged phrasing ("may indicate", "possible", "warrants investigation")
-because the underlying data is simulated and the model is a prototype.
-
-DESIGN FOR AI INTEGRATION
-──────────────────────────
-The module is split into two clearly separated layers:
-
-  Layer 1 — PROMPT BUILDER  (always runs, no external dependencies)
-    build_prompt()  assembles a structured context + instruction string
-    that fully describes the telemetry situation. This string is the
-    single artifact that gets sent to any LLM.
-
-  Layer 2 — EXPLANATION GENERATOR  (pluggable back-end)
-    generate_explanation() has a `backend` parameter:
-
-      "template"  (default) — pure-Python template renderer, no API key
-                              needed; suitable for demo / offline use.
-
-      "openai"              — calls OpenAI Chat Completions API.
-                              Requires: pip install openai
-                              Env var:  OPENAI_API_KEY
-
-      "watsonx"             — calls IBM watsonx.ai text generation API.
-                              Requires: pip install ibm-watsonx-ai
-                              Env vars: WATSONX_API_KEY, WATSONX_PROJECT_ID
-                                        WATSONX_URL (optional, defaults to
-                                        https://us-south.ml.cloud.ibm.com)
-
-      Any callable          — if `backend` is a Python callable it is called
-                              as backend(prompt: str) -> str, allowing you to
-                              plug in any model without changing this file.
-
-USAGE
-─────
-    from src.ai_explanation import generate_explanation, build_prompt, ExplanationInput
-
-    inp = ExplanationInput(
-        timestamp        = "2026-01-02 13:20:00",
-        telemetry        = {"temperature": 12.92, "battery_voltage": 21.41, ...},
-        anomaly_detected = True,
-        anomaly_score    = -0.137,
-        risk_score       = 73,
-        risk_level       = "HIGH",
-        top_factors      = ["Battery voltage anomaly (battery_voltage: 21.41 V)"],
-        contributions    = [...],   # list of ChannelContribution from risk_engine
-    )
-
-    text = generate_explanation(inp)                        # offline template
-    text = generate_explanation(inp, backend="openai")      # GPT-4o
-    text = generate_explanation(inp, backend="watsonx")     # IBM Granite
-    text = generate_explanation(inp, backend=my_fn)         # any callable
+Prototype decision-support module for simulated spacecraft telemetry.
 """
 
 from __future__ import annotations
 
 import os
-import textwrap
 from dataclasses import dataclass, field
-from typing import Any, Callable
+from typing import Any, Callable, ClassVar
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 1.  Input data contract
-# ─────────────────────────────────────────────────────────────────────────────
+
+# ---------------------------------------------------------------------------
+# Telemetry configuration
+# ---------------------------------------------------------------------------
+
+TELEMETRY_CHANNELS: tuple[str, ...] = (
+    "temperature",
+    "battery_voltage",
+    "power_consumption",
+    "radiation_level",
+    "signal_strength",
+    "fuel_level",
+    "solar_output",
+)
+
+CHANNEL_UNITS: dict[str, str] = {
+    "temperature": "°C",
+    "battery_voltage": "V",
+    "power_consumption": "W",
+    "radiation_level": "mSv/h",
+    "signal_strength": "dBm",
+    "fuel_level": "%",
+    "solar_output": "W",
+}
+
+
+# ---------------------------------------------------------------------------
+# Explanation input
+# ---------------------------------------------------------------------------
 
 @dataclass
 class ExplanationInput:
-    """
-    All information needed to generate one mission analysis paragraph.
+    """Snapshot of telemetry and its risk assessment."""
 
-    Fields map directly onto the outputs of risk_engine.assess_row() so the
-    two modules compose naturally:
-
-        assessment = assess_row(row, flag, score)
-        inp = ExplanationInput.from_assessment(row, assessment)
-        text = generate_explanation(inp)
-    """
-    timestamp:        str
-    telemetry:        dict[str, float]    # raw channel values
+    timestamp: str
+    telemetry: dict[str, float]
     anomaly_detected: bool
-    anomaly_score:    float               # IsolationForest decision score
-    risk_score:       int                 # MRI [0, 100]
-    risk_level:       str                 # LOW | MEDIUM | HIGH | CRITICAL
-    top_factors:      list[str]           # human-readable factor strings
-    # contributions is optional — used for richer template rendering
-    contributions:    list[Any] = field(default_factory=list)
+    anomaly_score: float
+    risk_score: int
+    risk_level: str
+    top_factors: list[str] = field(default_factory=list)
+    contributions: list[Any] = field(default_factory=list)
+
+    _CHANNELS: ClassVar[tuple[str, ...]] = TELEMETRY_CHANNELS
 
     @classmethod
     def from_assessment(
         cls,
-        row: dict | Any,
+        row: Any,
         assessment: Any,
     ) -> "ExplanationInput":
-        """
-        Convenience constructor: build from a raw telemetry row and a
-        RiskAssessment returned by risk_engine.assess_row().
-        """
-        # Accept both dict and pd.Series
-        telem = {
-            k: float(row[k])
-            for k in ("temperature", "battery_voltage", "power_consumption",
-                      "radiation_level", "signal_strength", "fuel_level",
-                      "solar_output")
+
+        def get_value(key: str, default: float = 0.0) -> float:
+            try:
+                if hasattr(row, "get"):
+                    value = row.get(key, default)
+                elif hasattr(row, "index") and key in row.index:
+                    value = row[key]
+                else:
+                    value = default
+
+                if value is None:
+                    return default
+
+                return float(value)
+
+            except (TypeError, ValueError, KeyError):
+                return default
+
+        telemetry = {
+            channel: get_value(channel)
+            for channel in TELEMETRY_CHANNELS
         }
-        ts = str(row.get("timestamp", "unknown"))
+
+        timestamp = ""
+
+        try:
+            if hasattr(row, "get"):
+                timestamp = str(row.get("timestamp", "") or "")
+            elif hasattr(row, "index") and "timestamp" in row.index:
+                timestamp = str(row["timestamp"] or "")
+        except Exception:
+            timestamp = ""
+
         return cls(
-            timestamp=ts,
-            telemetry=telem,
-            anomaly_detected=assessment.anomaly_detected,
-            anomaly_score=assessment.anomaly_score,
-            risk_score=assessment.risk_score,
-            risk_level=assessment.risk_level,
-            top_factors=assessment.top_factors,
-            contributions=assessment.contributions,
+            timestamp=timestamp,
+            telemetry=telemetry,
+            anomaly_detected=bool(
+                getattr(assessment, "anomaly_detected", False)
+            ),
+            anomaly_score=float(
+                getattr(assessment, "anomaly_score", 0.0)
+            ),
+            risk_score=int(
+                getattr(assessment, "risk_score", 0)
+            ),
+            risk_level=str(
+                getattr(assessment, "risk_level", "LOW")
+            ).upper(),
+            top_factors=list(
+                getattr(assessment, "top_factors", []) or []
+            ),
+            contributions=list(
+                getattr(assessment, "contributions", []) or []
+            ),
         )
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 2.  Channel metadata — plain descriptions used in both template and prompts
-# ─────────────────────────────────────────────────────────────────────────────
+# ---------------------------------------------------------------------------
+# Telemetry interpretation
+# ---------------------------------------------------------------------------
 
-# Maps channel name → (normal range description, what exceedance may indicate)
-CHANNEL_CONTEXT: dict[str, tuple[str, str]] = {
-    "temperature": (
-        "normal range -5 to 30 °C",
-        "possible thermal event such as heater runaway, solar overexposure, "
-        "or cooling system failure",
-    ),
-    "battery_voltage": (
-        "normal range 27.0–29.5 V on the 28 V regulated bus",
-        "possible battery cell failure, deep discharge, or power bus fault "
-        "that may lead to loss of power to critical subsystems",
-    ),
-    "power_consumption": (
-        "normal range 55–145 W during nominal operations",
-        "possible subsystem fault, short circuit, or unplanned activation of "
-        "power-intensive equipment",
-    ),
-    "radiation_level": (
-        "normal range 0.1–1.3 mSv/h during interplanetary cruise",
-        "possible solar particle event, passage through a radiation belt, or "
-        "sensor anomaly requiring instrument-dose assessment",
-    ),
-    "signal_strength": (
-        "normal range -82 to -55 dBm indicating a healthy link margin",
-        "possible antenna misalignment, atmospheric or plasma interference, "
-        "or hardware degradation affecting communication reliability",
-    ),
-    "solar_output": (
-        "normal range 55–125 W with solar arrays in full sunlight",
-        "possible panel occlusion, surface degradation, attitude-control drift "
-        "pointing panels away from the Sun, or eclipse entry",
-    ),
-    "fuel_level": (
-        "depletes gradually over the mission",
-        "unusually rapid depletion may indicate an unplanned thruster firing "
-        "or propellant leak",
-    ),
+CHANNEL_CONTEXT: dict[str, dict[str, str]] = {
+
+    "temperature": {
+        "normal": "normally operates between -5 °C and 30 °C",
+        "implication": (
+            "A temperature deviation may indicate a possible thermal-control "
+            "issue, heater failure, overheating, or sensor fault."
+        ),
+    },
+
+    "battery_voltage": {
+        "normal": "normally operates near 28 V (27.0–29.5 V)",
+        "implication": (
+            "A voltage deviation may indicate possible battery degradation, "
+            "excessive load, or charging-system issues."
+        ),
+    },
+
+    "power_consumption": {
+        "normal": "normally remains between 55 W and 145 W",
+        "implication": (
+            "Unexpected power consumption may indicate an abnormal subsystem "
+            "load, electrical fault, or a subsystem becoming inactive."
+        ),
+    },
+
+    "radiation_level": {
+        "normal": "normally ranges from 0.10 to 1.30 mSv/h",
+        "implication": (
+            "Elevated radiation may indicate a possible solar particle event "
+            "or passage through a higher-radiation region."
+        ),
+    },
+
+    "signal_strength": {
+        "normal": "normally falls between -82 dBm and -55 dBm",
+        "implication": (
+            "Weak signal strength may indicate possible antenna misalignment, "
+            "obstruction, communication hardware issues, or occultation."
+        ),
+    },
+
+    "fuel_level": {
+        "normal": "depletes gradually according to the mission profile",
+        "implication": (
+            "Unexpected fuel depletion may indicate a possible leak or "
+            "unplanned propulsion activity."
+        ),
+    },
+
+    "solar_output": {
+        "normal": "normally ranges from 55 W to 125 W when illuminated",
+        "implication": (
+            "Low solar output may indicate possible panel degradation, "
+            "shadowing, orientation problems, or debris impact."
+        ),
+    },
 }
 
-# Operator investigation actions keyed by channel
+
+# ---------------------------------------------------------------------------
+# Investigation recommendations
+# ---------------------------------------------------------------------------
+
 INVESTIGATION_ACTIONS: dict[str, str] = {
-    "temperature":        "Check thermal control system status, heater circuits, "
-                          "and verify attitude relative to solar direction.",
-    "battery_voltage":    "Review battery state-of-charge telemetry, check cell "
-                          "balancing data, and verify power bus load shedding.",
-    "power_consumption":  "Identify which subsystem is drawing excess current via "
-                          "individual subsystem power telemetry.",
-    "radiation_level":    "Cross-check with solar-event monitoring; consider "
-                          "enabling instrument safe-mode if levels persist.",
-    "signal_strength":    "Verify antenna pointing angles, check transponder "
-                          "health, and review uplink/downlink logs for dropouts.",
-    "solar_output":       "Confirm solar array deployment and pointing; check for "
-                          "surface contamination flags or eclipse schedule.",
-    "fuel_level":         "Audit recent thruster firing logs and inspect propellant "
-                          "system pressure readings for leak indicators.",
+
+    "temperature": (
+        "Check thermal-control heater and cooler status. "
+        "Review nearby temperature sensors and look for recent thermal events."
+    ),
+
+    "battery_voltage": (
+        "Review cell-level voltage telemetry and recent charge/discharge cycles. "
+        "Verify power bus load conditions and load-shedding thresholds."
+    ),
+
+    "power_consumption": (
+        "Identify currently active subsystems and review power-distribution logs. "
+        "Check for unexpected load changes in the minutes prior to this reading."
+    ),
+
+    "radiation_level": (
+        "Compare the reading with space-weather alerts and radiation detector data. "
+        "Consider enabling a protective operating mode if elevated levels persist."
+    ),
+
+    "signal_strength": (
+        "Verify antenna pointing and check communication-system status. "
+        "Review scheduled occultation periods and uplink/downlink logs."
+    ),
+
+    "fuel_level": (
+        "Review propulsion-system valve and pressure telemetry. "
+        "Compare consumption with the planned burn schedule and check for unexpected propulsion events."
+    ),
+
+    "solar_output": (
+        "Check solar-array orientation and deployment status. "
+        "Review eclipse periods and compare output against the expected generation curve."
+    ),
 }
 
-# Risk-level urgency phrases used in the opening sentence
+
+# ---------------------------------------------------------------------------
+# Risk language
+# ---------------------------------------------------------------------------
+
 URGENCY_PHRASE: dict[str, str] = {
-    "LOW":      "Telemetry appears nominal.",
-    "MEDIUM":   "Telemetry shows elevated indicators that warrant operator attention.",
-    "HIGH":     "Telemetry indicates a significant anomaly requiring immediate investigation.",
-    "CRITICAL": "Telemetry shows critical conditions that may pose a mission-threatening risk.",
+    "LOW": (
+        "Telemetry appears to remain within generally nominal "
+        "operating conditions."
+    ),
+    "MEDIUM": (
+        "Telemetry shows elevated indicators that warrant operator attention."
+    ),
+    "HIGH": (
+        "Telemetry indicates a significant anomaly requiring prompt "
+        "investigation."
+    ),
+    "CRITICAL": (
+        "Telemetry suggests a potentially serious condition requiring "
+        "immediate review."
+    ),
 }
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 3.  Prompt builder  (Layer 1 — always available, no API needed)
-# ─────────────────────────────────────────────────────────────────────────────
+# ---------------------------------------------------------------------------
+# Prompt builder for optional LLM backends
+# ---------------------------------------------------------------------------
 
 def build_prompt(inp: ExplanationInput) -> str:
-    """
-    Assemble a fully self-contained LLM prompt from an ExplanationInput.
 
-    The prompt includes:
-      • System role / context paragraph
-      • Structured telemetry snapshot
-      • Anomaly and risk summary
-      • Contributing factors with per-channel context
-      • Four specific questions the analysis must answer
-      • Tone / hedging instructions
-
-    Returns a single string ready to be sent to any LLM as the user message
-    (or as the content of a user-role chat message).
-    """
-    # --- Telemetry snapshot block ---
-    telem_lines = []
-    for ch, val in inp.telemetry.items():
-        ctx, _ = CHANNEL_CONTEXT.get(ch, ("", ""))
-        telem_lines.append(f"  {ch:<22} = {val:>9.3f}   ({ctx})")
-    telem_block = "\n".join(telem_lines)
-
-    # --- Contributing factors block ---
-    if inp.top_factors:
-        factors_block = "\n".join(f"  • {f}" for f in inp.top_factors)
-    else:
-        factors_block = "  • No individual channel exceeded its threshold. " \
-                        "The IsolationForest model detected a multivariate deviation."
-
-    # --- Per-channel anomaly context (for contributing channels only) ---
-    contrib_detail = []
-    for c in inp.contributions:
-        if getattr(c, "is_contributing", False):
-            _, implication = CHANNEL_CONTEXT.get(c.channel, ("", "unknown channel"))
-            contrib_detail.append(
-                f"  {c.channel}: value {c.value} {c.unit} "
-                f"(threshold exceedance score {c.threshold_score:.0f}/100) — "
-                f"{implication}."
-            )
-    contrib_block = "\n".join(contrib_detail) if contrib_detail else "  (none exceeded individual thresholds)"
-
-    # --- Assemble full prompt ---
-    prompt = textwrap.dedent(f"""
-        You are AstraGuard AI, a mission-support assistant for a simulated
-        spacecraft telemetry monitoring system. You help operators understand
-        anomalies detected in telemetry data.
-
-        IMPORTANT: All data below is SIMULATED telemetry from an AI prototype.
-        It is NOT real spacecraft data. Use cautious, hedged language such as
-        "may indicate", "possible", "appears to", "warrants investigation".
-        Never present findings as certain facts.
-
-        [TELEMETRY SNAPSHOT]
-        Timestamp : {inp.timestamp}
-
-        {telem_block}
-
-        [ANOMALY DETECTION]
-        Anomaly detected by IsolationForest : {"YES" if inp.anomaly_detected else "NO"}
-        IsolationForest decision score      : {inp.anomaly_score:.6f}
-          (more negative = stronger anomaly; normal range ~0.0 to +0.12)
-
-        [MISSION RISK INDEX]
-        Risk Score  : {inp.risk_score} / 100
-        Risk Level  : {inp.risk_level}
-          (0-30 LOW | 31-60 MEDIUM | 61-80 HIGH | 81-100 CRITICAL)
-
-        [CONTRIBUTING FACTORS]
-        {factors_block}
-
-        [CHANNEL-LEVEL EXCEEDANCE DETAIL]
-        {contrib_block}
-
-        [INSTRUCTIONS]
-        Write a concise mission analysis (4–6 sentences, plain prose, no
-        bullet points or headers) that answers all four questions below:
-
-          1. What anomaly was detected, and in which telemetry channel(s)?
-          2. Why might this matter to the mission (what could it indicate)?
-          3. Which telemetry signals contributed most and how severely?
-          4. What should the operator investigate or check next?
-
-        Tone: professional, clear, hedged. Begin with the urgency summary:
-        "{URGENCY_PHRASE[inp.risk_level]}"
-    """).strip()
-
-    return prompt
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# 4.  Template renderer  (offline fallback — no API key required)
-# ─────────────────────────────────────────────────────────────────────────────
-
-def _render_template(inp: ExplanationInput) -> str:
-    """
-    Generate a natural-language mission analysis using pure Python string
-    templates. No external API required. Suitable for demos and offline use.
-
-    The output mirrors the 4-question structure required by the LLM prompt
-    so that swapping in a real LLM produces a visually identical result.
-    """
-    # ── Opening: urgency ──────────────────────────────────────────────────────
-    opening = URGENCY_PHRASE[inp.risk_level]
-
-    # ── Q1 — What anomaly was detected? ──────────────────────────────────────
-    if inp.anomaly_detected:
-        detection_str = (
-            f"At {inp.timestamp}, the IsolationForest anomaly detector flagged "
-            f"this telemetry reading as anomalous (decision score "
-            f"{inp.anomaly_score:.4f})."
-        )
-    else:
-        detection_str = (
-            f"At {inp.timestamp}, no statistical anomaly was detected by the "
-            "IsolationForest model."
-        )
-
-    # ── Q2 — Why might it matter? (per contributing channel) ─────────────────
-    contributing = [c for c in inp.contributions if getattr(c, "is_contributing", False)]
-    if contributing:
-        implications = []
-        for c in contributing[:3]:   # top 3 to keep text concise
-            _, impl = CHANNEL_CONTEXT.get(c.channel, ("", f"anomalous {c.channel}"))
-            implications.append(
-                f"the {c.channel} reading of {c.value} {c.unit} "
-                f"may indicate {impl}"
-            )
-        implication_str = (
-            "This may be significant because "
-            + "; and ".join(implications) + "."
-        )
-    elif inp.anomaly_detected:
-        implication_str = (
-            "No individual channel exceeded its fixed threshold, but the "
-            "IsolationForest model detected a possible multivariate deviation "
-            "that may warrant closer inspection of combined subsystem behaviour."
-        )
-    else:
-        implication_str = (
-            "All channels are within their expected operating envelopes and "
-            "no anomalous behaviour has been identified."
-        )
-
-    # ── Q3 — Which signals contributed most? ─────────────────────────────────
-    if contributing:
-        top = contributing[0]
-        severity = (
-            "critically high" if top.threshold_score >= 80 else
-            "significantly elevated" if top.threshold_score >= 50 else
-            "moderately elevated"
-        )
-        signal_str = (
-            f"The primary contributing signal is {top.channel} with a "
-            f"threshold exceedance score of {top.threshold_score:.0f}/100 "
-            f"({severity}), resulting in a Mission Risk Index of "
-            f"{inp.risk_score}/100 ({inp.risk_level})."
-        )
-        if len(contributing) > 1:
-            others = ", ".join(c.channel for c in contributing[1:3])
-            signal_str += f" Secondary contributors include: {others}."
-    else:
-        signal_str = (
-            f"No channels exceeded their individual thresholds. "
-            f"The Mission Risk Index is {inp.risk_score}/100 ({inp.risk_level})."
-        )
-
-    # ── Q4 — What to investigate next? ───────────────────────────────────────
-    if contributing:
-        actions = []
-        for c in contributing[:2]:   # top 2 actionable channels
-            action = INVESTIGATION_ACTIONS.get(c.channel, f"Review {c.channel} subsystem logs.")
-            actions.append(action)
-        investigate_str = (
-            "Recommended next steps: "
-            + " Additionally, ".join(actions)
-        )
-    elif inp.anomaly_detected:
-        investigate_str = (
-            "Recommended next steps: review the full telemetry snapshot for "
-            "subtle combined deviations across multiple channels, and compare "
-            "against historical baseline patterns for this mission phase."
-        )
-    else:
-        investigate_str = (
-            "No immediate investigation is required. Continue standard "
-            "telemetry monitoring according to nominal operations procedure."
-        )
-
-    # ── Combine into a single paragraph ──────────────────────────────────────
-    paragraph = " ".join([
-        opening,
-        detection_str,
-        implication_str,
-        signal_str,
-        investigate_str,
-    ])
-
-    # Append prototype disclaimer as a final sentence
-    paragraph += (
-        " [PROTOTYPE: This analysis is generated from simulated telemetry "
-        "and is intended for demonstration purposes only.]"
+    telemetry_lines = "\n".join(
+        f"{channel}: "
+        f"{inp.telemetry.get(channel, 0.0):.3f} "
+        f"{CHANNEL_UNITS.get(channel, '')}"
+        for channel in TELEMETRY_CHANNELS
     )
 
-    return paragraph
+    if inp.top_factors:
+        factors = ", ".join(inp.top_factors[:4])
+    else:
+        factors = "No individual threshold factor was identified."
+
+    contribution_lines = []
+
+    for contribution in inp.contributions:
+        if getattr(contribution, "is_contributing", False):
+            channel = getattr(contribution, "channel", "unknown")
+            value = getattr(contribution, "value", "N/A")
+            score = getattr(contribution, "threshold_score", 0)
+
+            contribution_lines.append(
+                f"{channel}: value={value}, severity={score}/100"
+            )
+
+    contributions = (
+        "\n".join(contribution_lines)
+        if contribution_lines
+        else "No individual threshold exceedance."
+    )
+
+    return f"""
+You are AstraGuard AI, a mission-support assistant for a simulated
+spacecraft telemetry monitoring system.
+
+IMPORTANT:
+All telemetry is SIMULATED.
+This is a prototype demonstration.
+Do not present conclusions as certain aerospace findings.
+
+Use cautious language such as:
+"may indicate", "possible", "appears to", and "warrants investigation".
+
+Telemetry:
+{telemetry_lines}
+
+Timestamp:
+{inp.timestamp or "N/A"}
+
+Anomaly detected:
+{"YES" if inp.anomaly_detected else "NO"}
+
+IsolationForest anomaly score:
+{inp.anomaly_score:.6f}
+
+Mission Risk Index:
+{inp.risk_score}/100
+
+Risk level:
+{inp.risk_level}
+
+Top risk factors:
+{factors}
+
+Contributing telemetry signals:
+{contributions}
+
+Write a concise 4–6 sentence mission analysis.
+
+Explain:
+1. What anomaly was detected.
+2. Which telemetry channel contributed.
+3. Why it may matter.
+4. What the operator should investigate next.
+
+Begin with:
+"{URGENCY_PHRASE.get(inp.risk_level, URGENCY_PHRASE['LOW'])}"
+""".strip()
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 5.  AI back-ends  (Layer 2 — swappable LLM integrations)
-# ─────────────────────────────────────────────────────────────────────────────
+# ---------------------------------------------------------------------------
+# Offline AI-style explanation engine
+# ---------------------------------------------------------------------------
 
-def _call_openai(prompt: str, model: str = "gpt-4o-mini") -> str:
-    """
-    Send prompt to OpenAI Chat Completions API.
+def _render_template(inp: ExplanationInput) -> str:
 
-    Requirements:
-        pip install openai
-        Environment variable: OPENAI_API_KEY
-    """
+    risk_level = inp.risk_level.upper()
+
+    # Find contributing channels.
+    contributing = [
+        contribution
+        for contribution in inp.contributions
+        if getattr(contribution, "is_contributing", False)
+    ]
+
+    # Sort strongest contributors first.
+    contributing.sort(
+        key=lambda item: getattr(item, "threshold_score", 0),
+        reverse=True,
+    )
+
+    primary = contributing[0] if contributing else None
+
+    primary_channel = (
+        getattr(primary, "channel", None)
+        if primary
+        else None
+    )
+
+    # ---------------------------------------------------------------
+    # Sentence 1 — anomaly status
+    # ---------------------------------------------------------------
+
+    if inp.anomaly_detected:
+
+        opening = (
+            f"{URGENCY_PHRASE.get(risk_level, URGENCY_PHRASE['LOW'])} "
+            f"The IsolationForest model flagged this telemetry reading "
+            f"as a possible anomaly with a decision score of "
+            f"{inp.anomaly_score:.4f}."
+        )
+
+    else:
+
+        opening = (
+            f"{URGENCY_PHRASE.get(risk_level, URGENCY_PHRASE['LOW'])} "
+            f"The IsolationForest model did not flag this reading as "
+            f"an anomaly, with a decision score of "
+            f"{inp.anomaly_score:.4f}."
+        )
+
+    # ---------------------------------------------------------------
+    # Sentence 2 — primary telemetry signal
+    # ---------------------------------------------------------------
+
+    if primary_channel in CHANNEL_CONTEXT:
+
+        value = getattr(primary, "value", "N/A")
+        unit = getattr(primary, "unit", "")
+
+        context = CHANNEL_CONTEXT[primary_channel]
+
+        channel_sentence = (
+            f"The strongest contributing signal appears to be "
+            f"{primary_channel.replace('_', ' ')} at "
+            f"{value} {unit}, compared with a channel that "
+            f"{context['normal']}."
+        )
+
+    elif inp.top_factors:
+
+        factors = ", ".join(inp.top_factors[:3])
+
+        channel_sentence = (
+            f"The analysis identified the following risk factors: "
+            f"{factors}."
+        )
+
+    else:
+
+        channel_sentence = (
+            "No single telemetry channel clearly exceeded its "
+            "individual threshold, so the anomaly may reflect a "
+            "multivariate deviation across several signals."
+        )
+
+    # ---------------------------------------------------------------
+    # Sentence 3 — why it matters
+    # ---------------------------------------------------------------
+
+    if primary_channel in CHANNEL_CONTEXT:
+
+        implication = CHANNEL_CONTEXT[primary_channel]["implication"]
+
+    else:
+
+        implication = (
+            "The combined deviation may indicate an emerging subsystem "
+            "condition, although additional telemetry review would be "
+            "needed to determine the cause."
+        )
+
+    impact_sentence = implication
+
+    # ---------------------------------------------------------------
+    # Sentence 4 — other contributors
+    # ---------------------------------------------------------------
+
+    if len(contributing) > 1:
+
+        additional = [
+            getattr(item, "channel", "unknown").replace("_", " ")
+            for item in contributing[1:3]
+        ]
+
+        contributor_sentence = (
+            "Additional contributing signals include "
+            + ", ".join(additional)
+            + "."
+        )
+
+    else:
+
+        contributor_sentence = (
+            "No additional individually significant channel "
+            "contributions were identified."
+        )
+
+    # ---------------------------------------------------------------
+    # Sentence 5 — risk
+    # ---------------------------------------------------------------
+
+    risk_sentence = (
+        f"The Mission Risk Index is {inp.risk_score}/100 "
+        f"({risk_level}), representing the prototype's current "
+        f"risk classification."
+    )
+
+    # ---------------------------------------------------------------
+    # Sentence 6 — recommended investigation
+    # ---------------------------------------------------------------
+
+    if primary_channel in INVESTIGATION_ACTIONS:
+
+        investigation_sentence = (
+            "Recommended next steps: "
+            + INVESTIGATION_ACTIONS[primary_channel]
+        )
+
+    else:
+
+        investigation_sentence = (
+            "Recommended next step: review telemetry around this "
+            "timestamp and check for concurrent subsystem events."
+        )
+
+    # ---------------------------------------------------------------
+    # Prototype disclaimer
+    # ---------------------------------------------------------------
+
+    disclaimer = (
+        " Prototype disclaimer: this analysis is generated from "
+        "simulated telemetry and is intended for demonstration and "
+        "decision-support purposes only."
+    )
+
+    return (
+        f"{opening} "
+        f"{channel_sentence} "
+        f"{impact_sentence} "
+        f"{contributor_sentence} "
+        f"{risk_sentence} "
+        f"{investigation_sentence}"
+        f"{disclaimer}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Optional OpenAI backend
+# ---------------------------------------------------------------------------
+
+def _call_openai(
+    prompt: str,
+    model: str = "gpt-4o-mini",
+) -> str:
+
     try:
-        from openai import OpenAI                           # type: ignore
+        import openai
     except ImportError as exc:
         raise ImportError(
-            "openai package not installed. Run: pip install openai"
+            "Install OpenAI with: pip install openai"
         ) from exc
 
     api_key = os.environ.get("OPENAI_API_KEY")
+
     if not api_key:
         raise EnvironmentError(
             "OPENAI_API_KEY environment variable is not set."
         )
 
-    client = OpenAI(api_key=api_key)
+    client = openai.OpenAI(api_key=api_key)
+
     response = client.chat.completions.create(
         model=model,
         messages=[
             {
                 "role": "system",
                 "content": (
-                    "You are AstraGuard AI, a mission-support assistant for a "
-                    "simulated spacecraft telemetry monitoring prototype. "
-                    "Always use hedged language and note when data is simulated."
+                    "You are AstraGuard AI, a prototype spacecraft "
+                    "telemetry explanation assistant. All data is "
+                    "simulated. Use cautious language and never claim "
+                    "certainty."
                 ),
             },
-            {"role": "user", "content": prompt},
+            {
+                "role": "user",
+                "content": prompt,
+            },
         ],
-        temperature=0.3,        # low temperature for consistent, factual tone
-        max_tokens=400,
+        max_tokens=300,
+        temperature=0.4,
     )
+
     return response.choices[0].message.content.strip()
 
 
-def _call_watsonx(prompt: str) -> str:
-    """
-    Send prompt to IBM watsonx.ai text generation API using IBM Granite.
+# ---------------------------------------------------------------------------
+# Optional IBM watsonx backend
+# ---------------------------------------------------------------------------
 
-    Requirements:
-        pip install ibm-watsonx-ai
-        Environment variables:
-            WATSONX_API_KEY      — IBM Cloud API key
-            WATSONX_PROJECT_ID   — watsonx.ai project ID
-            WATSONX_URL          — (optional) service URL
-    """
+def _call_watsonx(prompt: str) -> str:
+
     try:
-        from ibm_watsonx_ai import Credentials                      # type: ignore
-        from ibm_watsonx_ai.foundation_models import ModelInference  # type: ignore
+        from ibm_watsonx_ai import APIClient, Credentials
+        from ibm_watsonx_ai.foundation_models import ModelInference
+        from ibm_watsonx_ai.metanames import (
+            GenTextParamsMetaNames as GP,
+        )
     except ImportError as exc:
         raise ImportError(
-            "ibm-watsonx-ai package not installed. "
-            "Run: pip install ibm-watsonx-ai"
+            "Install watsonx with: pip install ibm-watsonx-ai"
         ) from exc
 
-    api_key    = os.environ.get("WATSONX_API_KEY")
-    project_id = os.environ.get("WATSONX_PROJECT_ID")
-    url        = os.environ.get("WATSONX_URL", "https://us-south.ml.cloud.ibm.com")
+    api_key = os.environ.get("WATSONX_API_KEY")
 
     if not api_key:
-        raise EnvironmentError("WATSONX_API_KEY environment variable is not set.")
-    if not project_id:
-        raise EnvironmentError("WATSONX_PROJECT_ID environment variable is not set.")
+        raise EnvironmentError(
+            "WATSONX_API_KEY environment variable is not set."
+        )
 
-    credentials = Credentials(url=url, api_key=api_key)
+    project_id = os.environ.get("WATSONX_PROJECT_ID")
+
+    if not project_id:
+        raise EnvironmentError(
+            "WATSONX_PROJECT_ID environment variable is not set."
+        )
+
+    url = os.environ.get(
+        "WATSONX_URL",
+        "https://us-south.ml.cloud.ibm.com",
+    )
+
+    credentials = Credentials(
+        url=url,
+        api_key=api_key,
+    )
+
+    client = APIClient(credentials)
+
     model = ModelInference(
         model_id="ibm/granite-3-8b-instruct",
-        credentials=credentials,
+        api_client=client,
         project_id=project_id,
         params={
-            "max_new_tokens": 400,
-            "temperature":    0.3,
-            "decoding_method": "greedy",
+            GP.MAX_NEW_TOKENS: 300,
+            GP.TEMPERATURE: 0.4,
         },
     )
-    response = model.generate_text(prompt=prompt)
-    return response.strip()
+
+    response = model.generate_text(
+        prompt=prompt
+    )
+
+    return str(response).strip()
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 6.  Main public function
-# ─────────────────────────────────────────────────────────────────────────────
+# ---------------------------------------------------------------------------
+# Main explanation function
+# ---------------------------------------------------------------------------
 
 def generate_explanation(
     inp: ExplanationInput,
-    backend: str | Callable[[str], str] = "template",
+    backend: str | Callable[..., str] = "template",
     **backend_kwargs: Any,
 ) -> str:
-    """
-    Generate a natural-language mission analysis for the given telemetry event.
 
-    Parameters
-    ----------
-    inp            : ExplanationInput — all telemetry, anomaly, and risk data.
+    # Custom callable backend.
+    if callable(backend) and not isinstance(backend, str):
 
-    backend        : str or callable — which explanation engine to use.
-        "template"  (default) — offline Python template, no API required.
-        "openai"              — OpenAI Chat Completions (needs OPENAI_API_KEY).
-        "watsonx"             — IBM watsonx.ai Granite (needs WATSONX_API_KEY,
-                                WATSONX_PROJECT_ID).
-        any callable          — called as backend(prompt: str) -> str.
+        prompt = build_prompt(inp)
 
-    **backend_kwargs : passed through to the selected backend (e.g.
-                       model="gpt-4o" for the openai backend).
+        return backend(
+            prompt,
+            **backend_kwargs,
+        )
 
-    Returns
-    -------
-    str — multi-sentence natural-language mission analysis.
-    """
+    # Default offline backend.
     if backend == "template":
+
         return _render_template(inp)
 
-    # For all non-template backends, first build the prompt then call the API
-    prompt = build_prompt(inp)
-
+    # OpenAI backend.
     if backend == "openai":
-        model = backend_kwargs.get("model", "gpt-4o-mini")
-        return _call_openai(prompt, model=model)
 
+        prompt = build_prompt(inp)
+
+        model = backend_kwargs.pop(
+            "model",
+            "gpt-4o-mini",
+        )
+
+        return _call_openai(
+            prompt,
+            model=model,
+        )
+
+    # IBM watsonx backend.
     if backend == "watsonx":
+
+        prompt = build_prompt(inp)
+
         return _call_watsonx(prompt)
 
-    if callable(backend):
-        return backend(prompt)
-
     raise ValueError(
-        f"Unknown backend '{backend}'. "
-        "Valid options: 'template', 'openai', 'watsonx', or any callable."
+        f"Unknown backend: {backend!r}. "
+        "Supported backends are: template, openai, watsonx, "
+        "or a custom callable."
     )
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 7.  Batch helper — annotate an entire risk DataFrame
-# ─────────────────────────────────────────────────────────────────────────────
+# ---------------------------------------------------------------------------
+# DataFrame helper
+# ---------------------------------------------------------------------------
 
 def explain_dataframe(
-    risk_df: Any,        # pd.DataFrame with risk_score, risk_level, top_factors
-    assessed_rows: list[Any],  # parallel list of RiskAssessment objects
-    backend: str | Callable[[str], str] = "template",
+    risk_df: Any,
+    assessed_rows: list[Any],
+    backend: str | Callable[..., str] = "template",
     anomaly_only: bool = True,
 ) -> Any:
-    """
-    Add an 'ai_explanation' column to a risk-assessed DataFrame.
 
-    Parameters
-    ----------
-    risk_df        : DataFrame returned by risk_engine.assess_dataframe().
-    assessed_rows  : list of RiskAssessment objects (one per DataFrame row),
-                     returned by a loop over risk_engine.assess_row() calls.
-    backend        : explanation backend (same options as generate_explanation).
-    anomaly_only   : if True (default), only generate explanations for rows
-                     where anomaly_flag == -1, leaving others as empty string.
-                     Set False to explain every row (slow with API backends).
+    if len(risk_df) != len(assessed_rows):
 
-    Returns
-    -------
-    The same DataFrame with an 'ai_explanation' column appended.
-    """
-    import pandas as pd
+        raise ValueError(
+            f"risk_df has {len(risk_df)} rows but assessed_rows has "
+            f"{len(assessed_rows)} assessments."
+        )
 
-    explanations = []
-    for i, (_, row) in enumerate(risk_df.iterrows()):
-        assessment = assessed_rows[i]
-        skip = anomaly_only and not assessment.anomaly_detected
-        if skip:
+    explanations: list[str] = []
+
+    for index, (_, row) in enumerate(risk_df.iterrows()):
+
+        assessment = assessed_rows[index]
+
+        if (
+            anomaly_only
+            and not getattr(
+                assessment,
+                "anomaly_detected",
+                False,
+            )
+        ):
+
             explanations.append("")
-        else:
-            inp = ExplanationInput.from_assessment(row, assessment)
-            explanations.append(generate_explanation(inp, backend=backend))
+            continue
 
-    out = risk_df.copy()
-    out["ai_explanation"] = explanations
-    return out
+        explanation_input = (
+            ExplanationInput.from_assessment(
+                row,
+                assessment,
+            )
+        )
+
+        explanation = generate_explanation(
+            explanation_input,
+            backend=backend,
+        )
+
+        explanations.append(explanation)
+
+    result = risk_df.copy()
+
+    result["ai_explanation"] = explanations
+
+    return result
